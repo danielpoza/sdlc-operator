@@ -51,21 +51,20 @@ async def lifespan(app: FastAPI):
     # Startup: código que se ejecuta al iniciar la aplicación
     print("INICIO SERVICIO BACKEND SDLC OPERATOR")
     #Lectura contexto Confluence
-    initcommand = get_confluence_page("CS", urllib.parse.unquote_plus("Inicialización"))
+    initcommand = get_confluence_page("CS", urllib.parse.unquote_plus("Initialize+Agent"))
     content = get_confluence_page("CS", urllib.parse.unquote_plus("ArquitecturaServicios"))
     content2 = get_confluence_page("CS", urllib.parse.unquote_plus("Normativa"))
     content_po = get_confluence_page("CS", urllib.parse.unquote_plus("Instrucciones+para+definir+a+alto+nivel+un+servicio"))
     app.state.confluence_page = content
     #Iniciación del LLM
-    instrucciones = "Instrucciones: " + "Ignora los tags <think> en todas tus respuestas y responde siempre de forma concisa. \n\n.     El contexto en el que debes basarte es el siguiente. Todas las preguntas que te haga, mira SIEMPRE primero si dentro del contexto tienes información que te permita responder. El contexto viene con tags HTML por lo que tendrás que interpretarlo. Respecto a las respuestas que des, Por favor, responde en Markdown. Utiliza saltos de línea para separar párrafos, negritas para resaltar puntos clave, cursivas para enfatizar y utiliza bloques de código (triple backticks) para ejemplos. Organiza la respuesta en secciones y subtítulos para mayor claridad.   \n"+ content+ ".\n "+ content2+ ".\n" + content_po+ ".\n"
+    instrucciones = initcommand + "\n  El contexto en el que debes basarte es el siguiente. Todas las preguntas que te haga, mira SIEMPRE primero si dentro del contexto tienes información que te permita responder. El contexto viene con tags HTML por lo que tendrás que interpretarlo:   \n"+ content+ ".\n "+ content2+ ".\n" + content_po+ ".\n"
     
     
     #llm_instance = ChatOllama(temperature=0, model="deepseek-r1:8b")
     llm_instance = ChatOpenAI(temperature=0,model_name="gpt-4o")
     try:
-        consulta = ""
        
-        prompt_inicial = instrucciones + "\n" + consulta
+        prompt_inicial = instrucciones + "\n" 
         print ("Prompt inicial: ", prompt_inicial)
     
         dummy_response = llm_instance.predict(prompt_inicial)
@@ -76,14 +75,17 @@ async def lifespan(app: FastAPI):
     app.state.llm = llm_instance
     
     # Creamos y guardamos la memoria conversacional
+    # Crea una nueva instancia de memoria
+    app.state.memory = ConversationBufferMemory(memory_key="history")
     memory = ConversationBufferMemory(memory_key="history", return_messages=True)
     app.state.memory = memory
     
     # Inyectamos el contexto inicial
     app.state.memory.save_context({"input": instrucciones}, {"output": dummy_response})
     print("Contexto de Confluence cargado.")
+    print ("\n\n\nMEMORIA DE INICIO: \n\n", memory.load_memory_variables({}))
     yield
-    
+   
     # Shutdown: código que se ejecuta al cerrar la aplicación
     print("Apagando la aplicación...")
     
