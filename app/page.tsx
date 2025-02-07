@@ -2,6 +2,7 @@
 import { useState, KeyboardEvent } from "react";
 import Layout from "@/app/components/layout";
 import ReactMarkdown from "react-markdown";
+import rehypeRaw from "rehype-raw"
 
 const stages = [
   {
@@ -72,9 +73,13 @@ export default function Home() {
 
   return (
     <Layout>
-      <div className="flex flex-col gap-6 h-full">
+      <div className="flex flex-col gap-6 h-full" >
         {/* Sección superior: Título y botones */}
-        <div>
+        <div style={{
+              backgroundImage: "url('/background2.png')",
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+            }}>
           <h2 className="text-lg font-semibold mb-4 text-center">
             Etapas del Ciclo de Vida de Desarrollo Software
           </h2>
@@ -104,21 +109,23 @@ export default function Home() {
 
         {/* Sección inferior: Chat */}
         <div className="flex flex-col gap-4">
-          <h2 className="text-2xl font-bold text-center text-gray-800">
+          <h2 className="text-3xl font-bold text-center text-gray-800">
             Asistente SDLC
           </h2>
           {/* Contenedor del chat con altura fija y scroll interno */}
-          <div className="h-96 overflow-y-auto p-4 bg-gray-50 rounded-lg shadow-md">
+          <div className="h-96 w-full max-w-3xl overflow-y-auto p-4 bg-gray-50 rounded-lg shadow-md">
             {messages.map((msg, index) => (
               <div
                 key={index}
-                className={`max-w-md p-4 rounded-xl mb-2 ${
+                className={`w-full p-4 rounded-xl mb-2 ${
                   msg.sender === "user"
                     ? "bg-blue-500 text-white self-end"
                     : "bg-gray-200 text-gray-800 self-start"
                 }`}
               >
-                <ReactMarkdown>{msg.text}</ReactMarkdown>
+                <ReactMarkdown rehypePlugins={[rehypeRaw]}>
+                 {msg.text}
+                </ReactMarkdown>
               </div>
             ))}
           </div>

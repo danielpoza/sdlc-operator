@@ -8,7 +8,7 @@ export default function Sidebar() {
       <div className="p-6 bg-white">
         {/* Imagen de logo placeholder */}
         <Image
-          src="https://via.placeholder.com/180x80?text=Logo"
+          src="/DTSLogo.png"
           alt="Logo"
           width={180}
           height={80}
