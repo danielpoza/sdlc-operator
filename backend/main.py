@@ -14,6 +14,8 @@ from langchain import PromptTemplate, LLMChain
 from contextlib import asynccontextmanager
 from bs4 import BeautifulSoup
 from typing import List
+import json
+from confluence_utils import get_confluence_page, create_confluence_page
 
 
     
@@ -101,93 +103,6 @@ app.add_middleware(
     #Clase que recoge la request del chat
 class MessageRequest(BaseModel):
     text: str
-# Función que lee una página de confluence
-def get_confluence_page(space_key: str, page_title: str) -> str:
-    """
-    Accede a una página de Confluence y devuelve su contenido en formato HTML.
-    
-    Parámetros:
-      - space_key: Clave del espacio donde se encuentra la página.
-      - page_title: Título de la página a recuperar.
-      
-    Retorna:
-      El contenido HTML de la página o un mensaje de error si no se encuentra.
-    """
-    # Configuración: URL base, usuario y API token.
-    confluence_url = "https://danielpoza.atlassian.net/wiki/"
-    username = "danielpoza@gmail.com"
-    api_token = "ATATT3xFfGF0IBRbemSUoCCL6y6n6yhKHoZr0TRIDviC-tt56q79ybFKD-7KcYzNDf9-cj1JjHMsMG6M4NWoTRNzgwTCnov0Iz91YSEatfWh1k9FWFXGnCSeMIE--vysBFeQI5B7nWdhrlzFWtnD5EjPzhjcGGJ_NQhJYenIEoc-LWJ6cWN3Tqw=251793EF"
-
-    # Conectamos a Confluence
-    confluence = Confluence(
-        url=confluence_url,
-        username=username,
-        password=api_token
-    )
-
-    # Obtenemos la página por título y expandimos el contenido de almacenamiento (storage)
-    page = confluence.get_page_by_title(
-        space=space_key,
-        title=page_title,
-        expand='body.storage'
-    )
-
-    if page and "body" in page and "storage" in page["body"]:
-        return clean_html(page["body"]["storage"]["value"])
-    else:
-        return "No se encontró la página"
-
-from atlassian import Confluence
-
-def create_confluence_page(space_key: str, title: str, content: str, parent_id: str = None) -> dict:
-    """
-    Crea una nueva página en Confluence.
-    
-    Parámetros:
-      - space_key: La clave del espacio donde se creará la página.
-      - title: Título de la nueva página.
-      - content: Contenido de la página (normalmente en formato HTML o storage).
-      - parent_id: (Opcional) ID de la página padre, para crear una página anidada.
-      
-    Retorna:
-      Un diccionario con la información de la página creada o un mensaje de error.
-    """
-    confluence_url = "https://tu-dominio.atlassian.net/wiki/"
-    username = "tu-email@example.com"
-    api_token = "tu-api-token"
-
-    confluence = Confluence(
-        url=confluence_url,
-        username=username,
-        password=api_token
-    )
-    
-    page_data = {
-        "type": "page",
-        "title": title,
-        "space": {"key": space_key},
-        "body": {
-            "storage": {
-                "value": content,
-                "representation": "storage"
-            }
-        }
-    }
-    # Si se especifica una página padre, se añade al payload
-    if parent_id:
-        page_data["ancestors"] = [{"id": parent_id}]
-    
-    result = confluence.create_page(
-        space=space_key,
-        title=title,
-        body=content,
-        parent_id=parent_id
-    )
-    
-    return result
-
-
-
 
         
 @app.post("/process_message")
@@ -207,24 +122,41 @@ def process_message(request: MessageRequest):
     
     #llamamos al llm para que procese la información
     res = conversation.predict(input=request.text)
+    res=clean_markdown_json(res)
+    print("\n RESPUESTA LLM: \n", res)
+    #parseamos la respuesta
+    try:
+        parsed_response = json.loads(res)
+    except Exception as e:
+        # Si no es JSON, se asume que toda la respuesta es para el chat
+        parsed_response = {"user": res, "process": []}
+    
+
     
     # limpiamos el texto devue
     res = clean_tag(res, "think")
     
     #Calculamos el tiempo de procesamiento
     elapsed = time.perf_counter() - start_time
+    parsed_response = ChatResponse.model_validate_json(res)
+    
+    if parsed_response.process:
+        newPage = parsed_response.process[0]
+        actionRes = create_confluence_page("CS", newPage.title, newPage.content, newPage.root)
+        print(actionRes)
+        
     # Formateamos el tiempo en una etiqueta HTML (asegúrate de que el front-end permita HTML en Markdown)
     formatted_time = (
         f'<span style="color: #a0aec0; font-style: italic;">Tiempo de procesamiento: {elapsed:.2f} s</span>'
     )
      # Concatenamos la respuesta y el tiempo, por ejemplo separándolos con un salto de línea doble
-    final_response = f"{res}\n\n{formatted_time}"
+    final_response = f"{parsed_response.user}\n\n{formatted_time}"
     
     # Imprimimos todo el contexto: 
     context = memory.load_memory_variables({})
-    print("Historial de la conversación:", context)
+    #print("Historial de la conversación:", context)
    
-    # Retornamos la respuesta en un JSON
+    # Retornamos la respuesta en un JSON    
     return {"message": final_response}
     
 @app.post("/process_message_docuagent")
@@ -302,4 +234,15 @@ def clean_html(html: str) -> str:
     # El separador "\n" ayuda a mantener algunos saltos de línea entre secciones.
     return soup.get_text(separator="\n", strip=True)
 
-
+# Función para limpiar el json de salira (quitar el markdown al inicio y final)
+def clean_markdown_json(json_str: str) -> str:
+    """
+    Si la cadena está envuelta en triple backticks, elimina dichos delimitadores.
+    """
+    print("\nLimpiar JSON \n")
+    json_str = json_str.strip()
+    if json_str.startswith("```json") and json_str.endswith("```"):
+        # Remueve los primeros y últimos tres caracteres y cualquier espacio adicional
+        json_str = json_str[7:-3].strip()
+        print("\n REmovido JSON\n", json_str)
+    return json_str
